@@ -1,21 +1,45 @@
-from fastapi import FastAPI, UploadFile, File, status
+from fastapi import FastAPI, UploadFile, File, status, APIRouter
 from fastapi.responses import JSONResponse
+from dotenv import load_dotenv
 import shutil
 import os
 from uuid import uuid4
 from ocr_engine import extract_text
 import logging
 
-app = FastAPI()
+# Load environment variables
+load_dotenv()
 
-@app.get("/")
+# Get BASE_DIR and LOG_LEVEL from environment or set defaults
+BASE_DIR = os.getenv("BASE_DIR")
+if not BASE_DIR:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
+# Setup logging directory and logger
+log_dir = os.path.join(BASE_DIR, "logs")
+os.makedirs(log_dir, exist_ok=True)
+logging.basicConfig(
+    filename=os.path.join(log_dir, "smart_ocr.log"),
+    level=LOG_LEVEL,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+# Initialize FastAPI app and API router for versioning
+app = FastAPI(title="Smart OCR Agent")
+api_v1 = APIRouter(prefix="/api/v1", tags=["Smart OCR Agent"])
+
+@api_v1.get("/health/", tags=["Health"])
+def health_check():
+    return {"status": "ok"}
+
+@api_v1.get("/", tags=["Welcome"])
 def read_root():
     return {"message": "Smart OCR Agent is live!"}
 
-@app.post("/upload/")
+@api_v1.post("/upload/", tags=["OCR"])
 async def upload_file(file: UploadFile = File(...)):
-    # Set up base paths
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     input_dir = os.path.join(BASE_DIR, "storage", "input")
     output_dir = os.path.join(BASE_DIR, "storage", "output")
 
@@ -23,22 +47,22 @@ async def upload_file(file: UploadFile = File(...)):
     os.makedirs(output_dir, exist_ok=True)
 
     # Validate file type
-    if not file.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.pdf')):
+    allowed_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.pdf')
+    if not file.filename.lower().endswith(allowed_extensions):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"error": "Invalid file type. Please upload an image or PDF file (.png, .jpg, .jpeg, .bmp, .tiff, .pdf)."}
+            content={"error": f"Invalid file type. Allowed types: {', '.join(allowed_extensions)}"}
         )
 
-    # Generate task ID and save file
     task_id = str(uuid4())
     file_path = os.path.join(input_dir, f"{task_id}_{file.filename}")
 
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        print(f"✅ File saved to: {file_path}")
+        logger.info(f"{task_id} - File saved to: {file_path}")
     except Exception as e:
-        print(f"❌ Failed to save file: {e}")
+        logger.error(f"{task_id} - Failed to save file: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"error": "Failed to save file", "details": str(e)}
@@ -47,9 +71,9 @@ async def upload_file(file: UploadFile = File(...)):
     # Run OCR
     try:
         ocr_text = extract_text(file_path)
-        print(f"🧠 OCR Text Extracted:\n{ocr_text}")
+        logger.info(f"{task_id} - OCR completed successfully.")
     except Exception as e:
-        print(f"❌ OCR failed: {e}")
+        logger.error(f"{task_id} - OCR failed: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"error": "OCR failed", "details": str(e)}
@@ -60,17 +84,13 @@ async def upload_file(file: UploadFile = File(...)):
     try:
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(ocr_text)
-        print(f"📄 OCR output saved to: {output_path}")
+        logger.info(f"{task_id} - OCR output saved to: {output_path}")
     except Exception as e:
-        print(f"❌ Failed to write OCR output: {e}")
+        logger.error(f"{task_id} - Failed to save OCR output: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"error": "Failed to save OCR output", "details": str(e)}
         )
-
-    # Logging
-    logging.basicConfig(filename=os.path.join(BASE_DIR, "upload_log.txt"), level=logging.INFO)
-    logging.info(f"{task_id} - Uploaded: {file_path} - OCR Output: {output_path}")
 
     return {
         "message": "File uploaded and OCR complete",
@@ -78,9 +98,8 @@ async def upload_file(file: UploadFile = File(...)):
         "ocr_output_file": f"{task_id}.txt"
     }
 
-@app.get("/result/{task_id}/")
+@api_v1.get("/result/{task_id}/", tags=["OCR"])
 async def get_ocr_result(task_id: str):
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     output_dir = os.path.join(BASE_DIR, "storage", "output")
     output_file = os.path.join(output_dir, f"{task_id}.txt")
 
@@ -90,13 +109,17 @@ async def get_ocr_result(task_id: str):
                 ocr_text = f.read()
             return {"task_id": task_id, "ocr_text": ocr_text}
         except Exception as e:
-            print(f"❌ Failed to read OCR output: {e}")
+            logger.error(f"{task_id} - Failed to read OCR output: {e}")
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={"error": "Failed to read OCR output", "details": str(e)}
             )
     else:
+        logger.warning(f"{task_id} - OCR result not found.")
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
             content={"error": "OCR result not found for the provided task ID."}
         )
+
+# Include API router
+app.include_router(api_v1)
