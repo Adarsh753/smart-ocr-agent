@@ -20,7 +20,8 @@ A FastAPI-based backend service for performing Optical Character Recognition (OC
 * **FastAPI** — web framework
 * **Python** — backend language
 * **dotenv** — environment variable management
-* **OCR Engine** — (You’ll need to provide `ocr_engine.py` with `extract_text()` implementation)
+* **OCR Engine** — import easyocr
+		   import cv2
 
 ---
 
