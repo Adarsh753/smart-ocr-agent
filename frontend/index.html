@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Smart OCR Agent</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Smart OCR Agent - File Upload</h1>
+    </header>
+    <main>
+        <label for="fileInput">Choose a file to upload:</label>
+        <input type="file" id="fileInput" accept="image/*,.pdf" />
+        <button onclick="uploadFile()">Upload and Process</button>
+        <div id="status"></div>
+        <pre id="result"></pre>
+    </main>
+    <script src="app.js"></script>
+</body>
+</html>

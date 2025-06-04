@@ -6,6 +6,7 @@ import os
 from uuid import uuid4
 from ocr_engine import extract_text
 import logging
+from fastapi.middleware.cors import CORSMiddleware  # 🔥 Import CORSMiddleware
 
 # Load environment variables
 load_dotenv()
@@ -29,6 +30,15 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app and API router for versioning
 app = FastAPI(title="Smart OCR Agent")
 api_v1 = APIRouter(prefix="/api/v1", tags=["Smart OCR Agent"])
+
+# 🔥 Add CORS middleware configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # For development/testing; restrict in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @api_v1.get("/health/", tags=["Health"])
 def health_check():
